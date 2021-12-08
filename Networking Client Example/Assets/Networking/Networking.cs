@@ -24,6 +24,7 @@ public class Networking : MonoBehaviour
     public string uri = "";
     public int client_id = 0;
     public Dictionary<int, Entity> sync_objects = new Dictionary<int, Entity>();
+    public Dictionary<int, Action> on_change = new Dictionary<int, Action>();
     public Stack<int> changes = new Stack<int>();
     public bool ready = false;
     public GameObject obj;
@@ -90,12 +91,17 @@ public class Networking : MonoBehaviour
 
     void UpdateObjects(Dictionary<int, Entity> items)
     {
+        List<GameObject> tobuild = new List<GameObject>();
         //fetch changes from server
         foreach(var item in items)
         {
             if (sync_objects.ContainsKey(item.Key))
             {
                 sync_objects[item.Key] = item.Value;
+                if (on_change.ContainsKey(item.Key))
+                {
+                    on_change[item.Key]();
+                }
             }
             else
             {
@@ -105,16 +111,32 @@ public class Networking : MonoBehaviour
                 {
                     if (item.Value.str.Count > 0)
                     {
-                        if (item.Value.str[0] == "ObjSync")
+                        if (item.Value.str[0] == "_ObjSync" || item.Value.str[0] == "_ObjSync_C")
                         {
                             Vector3 position = new Vector3(item.Value.flo[0], item.Value.flo[1], item.Value.flo[2]);
                             var gobject = Instantiate(obj, position, Quaternion.identity);
+                            gobject.GetComponent<ObjSync>().SetNetworking(this);
                             gobject.GetComponent<ObjSync>().entity_id = item.Key;
                             gobject.GetComponent<ObjSync>().master = false;
+                            if (item.Value.str[0] == "_ObjSync_C")
+                            {
+                                gobject.GetComponent<ObjSync>().children_uploader_id = (int)item.Value.flo[3];
+                                tobuild.Add(gobject);
+                            }
                         }
                     }
                 }
+
+                if (on_change.ContainsKey(item.Key))
+                {
+                    on_change[item.Key]();
+                }
             }
+        }
+
+        foreach(var go in tobuild)
+        {
+            go.GetComponent<ObjSync>().Build();
         }
 
         //upload changes to server
@@ -133,6 +155,8 @@ public class Networking : MonoBehaviour
                 upload_data.changes.Add(change, sync_objects[change]);
         }
         string json = JsonConvert.SerializeObject(upload_data);
+        if (json.Length > 4)
+            Debug.Log(json);
         StartCoroutine(Post(json));
     }
 

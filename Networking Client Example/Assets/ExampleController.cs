@@ -7,6 +7,8 @@ public class ExampleController : MonoBehaviour
     static public Networking networking;
     public GameObject obj;
 
+    GameObject inst;
+
     void Start()
     {
         networking = gameObject.AddComponent<Networking>();
@@ -17,6 +19,11 @@ public class ExampleController : MonoBehaviour
 
     public void AddCube()
     {
-        ObjSync.NetInstantiate(obj, networking, new Vector3(0, 2, 0), Quaternion.identity);
+        inst = ObjSync.NetInstantiate(obj, networking, new Vector3(0, 2, 0), Quaternion.identity, true);
+    }
+
+    public void UploadParts()
+    {
+        inst.GetComponent<ObjSync>().UploadChildren();
     }
 }
