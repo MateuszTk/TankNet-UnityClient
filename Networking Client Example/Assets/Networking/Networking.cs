@@ -33,9 +33,13 @@ public class Networking : MonoBehaviour
     public void Authorize(Action<int> callback)
     {
         if (uri.Length == 0)
+        {
             Debug.Log("Server address (uri) is not set");
+            client_id = -1;
+        }
         else
         {
+            client_id = 0;
             StartCoroutine(Get<int>("auth", c_id =>
             {
                 if (c_id > 0)
@@ -91,7 +95,6 @@ public class Networking : MonoBehaviour
 
     void UpdateObjects(Dictionary<int, Entity> items)
     {
-        List<GameObject> tobuild = new List<GameObject>();
         //fetch changes from server
         foreach(var item in items)
         {
@@ -114,29 +117,23 @@ public class Networking : MonoBehaviour
                         if (item.Value.str[0] == "_ObjSync" || item.Value.str[0] == "_ObjSync_C")
                         {
                             Vector3 position = new Vector3(item.Value.flo[0], item.Value.flo[1], item.Value.flo[2]);
-                            var gobject = Instantiate(obj, position, Quaternion.identity);
+                            Quaternion rotation = new Quaternion(item.Value.flo[3], item.Value.flo[4], item.Value.flo[5], item.Value.flo[6]);
+                            var gobject = Instantiate(obj, position, rotation);
                             gobject.GetComponent<ObjSync>().SetNetworking(this);
                             gobject.GetComponent<ObjSync>().entity_id = item.Key;
                             gobject.GetComponent<ObjSync>().master = false;
+
                             if (item.Value.str[0] == "_ObjSync_C")
                             {
-                                gobject.GetComponent<ObjSync>().children_uploader_id = (int)item.Value.flo[3];
-                                tobuild.Add(gobject);
+                                //wait until children uploader will be ready
+                                on_change.Add(item.Key, gobject.GetComponent<ObjSync>().Wait4Upid);
+                                //try because it can already be ready
+                                on_change[item.Key]();
                             }
                         }
                     }
                 }
-
-                if (on_change.ContainsKey(item.Key))
-                {
-                    on_change[item.Key]();
-                }
             }
-        }
-
-        foreach(var go in tobuild)
-        {
-            go.GetComponent<ObjSync>().Build();
         }
 
         //upload changes to server
@@ -154,19 +151,22 @@ public class Networking : MonoBehaviour
             if(!upload_data.changes.ContainsKey(change))
                 upload_data.changes.Add(change, sync_objects[change]);
         }
-        string json = JsonConvert.SerializeObject(upload_data);
-        if (json.Length > 4)
-            Debug.Log(json);
-        StartCoroutine(Post(json));
+        if (upload_data.changes.Count > 0) {
+            string json = JsonConvert.SerializeObject(upload_data);
+            if (json.Length > 4)
+                Debug.Log("POST: " + json);
+            StartCoroutine(Post(json));
+        }
     }
 
     IEnumerator Post(string json)
     {
-        using (UnityWebRequest webRequest = UnityWebRequest.Post(uri + "ssync", json))
+        var data = System.Text.Encoding.UTF8.GetBytes(json);
+        var uh = new UploadHandlerRaw(data);
+        var dh = (DownloadHandler)new DownloadHandlerBuffer();
+        using (UnityWebRequest webRequest = new UnityWebRequest(uri + "ssync", "POST", dh, uh))
         {
             webRequest.SetRequestHeader("Content-Type", "application/json");
-
-            webRequest.uploadHandler = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(json));
 
             // Request and wait
             yield return webRequest.SendWebRequest();
@@ -175,6 +175,8 @@ public class Networking : MonoBehaviour
             {
                 Debug.Log(webRequest.error);
             }
+            webRequest.uploadHandler.Dispose();
+            webRequest.downloadHandler.Dispose();
         }
     }
 
@@ -214,7 +216,8 @@ public class Networking : MonoBehaviour
                 break;
             case UnityWebRequest.Result.Success:
                 string text = webRequest.downloadHandler.text;
-                Debug.Log("Received: " + text);
+                if(text != "{}")
+                    Debug.Log("Received: " + text);
                 return text;
         }
 

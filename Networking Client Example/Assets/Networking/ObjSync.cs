@@ -9,7 +9,8 @@ public class ObjSync : MonoBehaviour
     public int entity_id = 0;
     public bool master = true;
     public bool clientPhysics = false;
-    public bool positionSync = false;
+    public bool transformSync = false;
+    public float threshold = 0.05f;
 
     public bool allow_children_upload = false;
     public int children_uploader_id = 0;
@@ -34,6 +35,11 @@ public class ObjSync : MonoBehaviour
                 rb2.isKinematic = true;
             }
         }
+        //set callback on children change
+        if (!master && children_uploader_id > 0)
+        {
+            networking.on_change.Add(children_uploader_id, Build);
+        }
     }
 
     // Update is called once per frame
@@ -51,46 +57,67 @@ public class ObjSync : MonoBehaviour
             }
             else
             {
-                if (positionSync)
+                if (transformSync)
                 {
-                    Vector3 netpos = new Vector3(networking.sync_objects[entity_id].flo[0],
-                           networking.sync_objects[entity_id].flo[1],
-                           networking.sync_objects[entity_id].flo[2]);
-
-                    if (master && Vector3.Distance(transform.position, prev_pos) > 0.1f)
+                    if (master && Vector3.Distance(transform.position, prev_pos) > threshold)
                     {
                         networking.sync_objects[entity_id].flo[0] = transform.position.x;
                         networking.sync_objects[entity_id].flo[1] = transform.position.y;
                         networking.sync_objects[entity_id].flo[2] = transform.position.z;
+
+                        networking.sync_objects[entity_id].flo[3] = transform.rotation.x;
+                        networking.sync_objects[entity_id].flo[4] = transform.rotation.y;
+                        networking.sync_objects[entity_id].flo[5] = transform.rotation.z;
+                        networking.sync_objects[entity_id].flo[6] = transform.rotation.w;
+
                         networking.changes.Push(entity_id);
                         prev_pos = transform.position;
                     }
-                    else if (Vector3.Distance(transform.position, netpos) > 0.1f)
+                    else
                     {
-                        transform.position = netpos;
-                        prev_pos = netpos;
+                        Vector3 netpos = new Vector3(networking.sync_objects[entity_id].flo[0],
+                           networking.sync_objects[entity_id].flo[1],
+                           networking.sync_objects[entity_id].flo[2]);
+
+                        if (Vector3.Distance(transform.position, netpos) > threshold)
+                        {
+                            transform.position = netpos;
+                            transform.rotation = new Quaternion(networking.sync_objects[entity_id].flo[3],
+                               networking.sync_objects[entity_id].flo[4],
+                               networking.sync_objects[entity_id].flo[5],
+                               networking.sync_objects[entity_id].flo[6]); ;
+                            prev_pos = netpos;
+                        }
                     }
                 }
             }
         }
     }
 
+    //master only
     void OnCreate(int _entity_id)
     {
-        if (positionSync)
+        if (transformSync)
         {
-            networking.sync_objects[_entity_id].flo.Add(transform.position.x);
-            networking.sync_objects[_entity_id].flo.Add(transform.position.y);
-            networking.sync_objects[_entity_id].flo.Add(transform.position.z);
+            var flo = networking.sync_objects[_entity_id].flo;
+            flo.Add(transform.position.x);
+            flo.Add(transform.position.y);
+            flo.Add(transform.position.z);
+            flo.Add(transform.rotation.x);
+            flo.Add(transform.rotation.y);
+            flo.Add(transform.rotation.z);
+            flo.Add(transform.rotation.w);
+
             if (allow_children_upload)
             {
                 networking.sync_objects[_entity_id].str.Add("_ObjSync_C");
-                networking.sync_objects[_entity_id].flo.Add(children_uploader_id);
+                flo.Add(children_uploader_id);
                 networking.NewEntity(up_id =>
                 {
                     children_uploader_id = up_id;
-                    networking.sync_objects[_entity_id].flo[3] = up_id;
-                    networking.on_change.Add(up_id, Build);
+                    networking.sync_objects[_entity_id].flo[7] = up_id;
+                    networking.changes.Push(_entity_id);
+                    networking.changes.Push(up_id);
                     entity_id = _entity_id;
                 });
             }
@@ -102,23 +129,41 @@ public class ObjSync : MonoBehaviour
         }
     }
 
+    //non master only
     public void Build()
     {
-        Debug.Log("build");
-        var downloader = networking.sync_objects[children_uploader_id];
-        int offset = 0;
-        foreach(var name in downloader.str)
-        {
-            foreach(var part in parts)
-            {
-                if (part.name == name)
+        if (children_uploader_id > 0) {
+            var downloader = networking.sync_objects[children_uploader_id];
+            if (downloader.str != null) {
+                int offset = 0;
+                foreach (var name in downloader.str)
                 {
-                    var pt = Instantiate(part, transform);
-                    pt.transform.localPosition = new Vector3(downloader.flo[offset], downloader.flo[offset + 1], downloader.flo[offset + 2]);
-                    offset += 3;
-                    break;
+                    foreach (var part in parts)
+                    {
+                        if (part.name == name)
+                        {
+                            var pt = Instantiate(part, transform);
+                            pt.transform.localPosition = new Vector3(downloader.flo[offset], downloader.flo[offset + 1], downloader.flo[offset + 2]);
+                            offset += 3;
+                            break;
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    //non master only
+    public void Wait4Upid()
+    {
+        int uid = (int)networking.sync_objects[entity_id].flo[7];
+        if (uid > 0 && networking.sync_objects.ContainsKey(uid))
+        {
+            //don't call me again
+            networking.on_change.Remove(entity_id);
+
+            children_uploader_id = uid;
+            Build();
         }
     }
 
@@ -151,11 +196,11 @@ public class ObjSync : MonoBehaviour
         }
     }
 
-    public static GameObject NetInstantiate(GameObject obj, Networking networking, Vector3 position, Quaternion rotation, bool allow_children_upload = false)
+    public static GameObject NetInstantiate(GameObject obj, Networking networking, Vector3 position, Quaternion rotation, bool _allow_children_upload = false)
     {
         GameObject instance = Instantiate(obj, position, rotation);
         instance.GetComponent<ObjSync>().networking = networking;
-        instance.GetComponent<ObjSync>().allow_children_upload = allow_children_upload;
+        instance.GetComponent<ObjSync>().allow_children_upload = _allow_children_upload;
         return instance;
     }
 

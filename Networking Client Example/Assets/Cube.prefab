@@ -112,8 +112,8 @@ MonoBehaviour:
   entity_id: 0
   master: 1
   clientPhysics: 0
-  positionSync: 1
-  allow_children_upload: 0
+  transformSync: 1
+  allow_children_upload: 1
   children_uploader_id: 0
   parts:
   - {fileID: 8182835155746808551, guid: 4b0cb1f3018c82b4587287b0672cf796, type: 3}
