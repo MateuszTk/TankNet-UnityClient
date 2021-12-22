@@ -111,8 +111,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   entity_id: 0
   master: 1
-  clientPhysics: 0
+  clientPhysics: 1
   transformSync: 1
+  threshold: 0.05
   allow_children_upload: 1
   children_uploader_id: 0
   parts:
