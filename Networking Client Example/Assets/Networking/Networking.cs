@@ -133,7 +133,7 @@ public class Networking : MonoBehaviour
 
                             if (item.Value.str[0] == "_ObjSync_C")
                             {
-                                //wait until children uploader will be ready
+                                //wait until children uploader is ready
                                 on_change[item.Key].Add(gobject.GetComponent<ObjSync>().Wait4Upid);
                                 //try because it can already be ready
                                 on_change[item.Key][on_change[item.Key].Count - 1]();

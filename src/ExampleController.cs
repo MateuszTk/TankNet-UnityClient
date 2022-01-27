@@ -12,7 +12,7 @@ public class ExampleController : MonoBehaviour
     void Start()
     {
         networking = gameObject.AddComponent<Networking>();
-        networking.uri = "https://localhost:5001/";
+        networking.uri = "http://localhost:5000/";
         networking.obj = obj;
         networking.Authorize(networking.StartSyncLoop);
     }

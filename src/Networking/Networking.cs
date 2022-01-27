@@ -24,7 +24,7 @@ public class Networking : MonoBehaviour
     public string uri = "";
     public int client_id = 0;
     public Dictionary<int, Entity> sync_objects = new Dictionary<int, Entity>();
-    public Dictionary<int, Action> on_change = new Dictionary<int, Action>();
+    public Dictionary<int, List<Action>> on_change = new Dictionary<int, List<Action>>();
     public Stack<int> changes = new Stack<int>();
     public bool ready = false;
     public GameObject obj;
@@ -106,12 +106,15 @@ public class Networking : MonoBehaviour
                 sync_objects[item.Key] = item.Value;
                 if (on_change.ContainsKey(item.Key))
                 {
-                    on_change[item.Key]();
+                    foreach(var fun in on_change[item.Key])
+                        fun();
                 }
             }
             else
             {
                 sync_objects.Add(item.Key, item.Value);
+                on_change.Add(item.Key, new List<Action>());
+
                 //if received new object of type ObjSync instantiate new corresponding GameObject
                 if (item.Value.str != null)
                 {
@@ -125,13 +128,15 @@ public class Networking : MonoBehaviour
                             gobject.GetComponent<ObjSync>().SetNetworking(this);
                             gobject.GetComponent<ObjSync>().entity_id = item.Key;
                             gobject.GetComponent<ObjSync>().master = false;
+                            
+                            on_change[item.Key].Add(gobject.GetComponent<ObjSync>().OnObjUpdate);
 
                             if (item.Value.str[0] == "_ObjSync_C")
                             {
-                                //wait until children uploader will be ready
-                                on_change.Add(item.Key, gobject.GetComponent<ObjSync>().Wait4Upid);
+                                //wait until children uploader is ready
+                                on_change[item.Key].Add(gobject.GetComponent<ObjSync>().Wait4Upid);
                                 //try because it can already be ready
-                                on_change[item.Key]();
+                                on_change[item.Key][on_change[item.Key].Count - 1]();
                             }
                         }
                     }

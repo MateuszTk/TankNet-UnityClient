@@ -42,7 +42,6 @@ public class ObjSync : MonoBehaviour
         }
     }
 
-    // Update is called once per frame
     void FixedUpdate()
     {
         if (networking.ready)
@@ -142,6 +141,13 @@ public class ObjSync : MonoBehaviour
     {
         if (children_uploader_id > 0) {
             var downloader = networking.sync_objects[children_uploader_id];
+
+            //destroy all children so that we can overwrite them
+            foreach (Transform child in transform)
+            {
+                Destroy(child.gameObject);
+            }
+
             if (downloader.str != null) {
                 int offset = 0;
                 foreach (var name in downloader.str)
@@ -181,6 +187,8 @@ public class ObjSync : MonoBehaviour
         if (allow_children_upload && children_uploader_id > 0 && networking.sync_objects[entity_id].str.Contains("_ObjSync_C"))
         {
             var uploader = networking.sync_objects[children_uploader_id];
+            uploader.flo.Clear();
+            uploader.str.Clear();
             foreach(Transform child in transform)
             {
                 Debug.Log(child.name);

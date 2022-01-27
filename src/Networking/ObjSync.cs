@@ -38,11 +38,10 @@ public class ObjSync : MonoBehaviour
         //set callback on children change
         if (!master && children_uploader_id > 0)
         {
-            networking.on_change.Add(children_uploader_id, Build);
+            networking.on_change[children_uploader_id].Add(Build);
         }
     }
 
-    // Update is called once per frame
     void FixedUpdate()
     {
         if (networking.ready)
@@ -75,23 +74,31 @@ public class ObjSync : MonoBehaviour
                     }
                     else
                     {
-                        Vector3 netpos = new Vector3(networking.sync_objects[entity_id].flo[0],
-                           networking.sync_objects[entity_id].flo[1],
-                           networking.sync_objects[entity_id].flo[2]);
-
-                        if (Vector3.Distance(transform.position, netpos) > threshold)
+                        if (!master && Vector3.Distance(transform.position, prev_pos) > threshold && GetComponent<Rigidbody>().velocity == Vector3.zero)
                         {
-                            transform.position = netpos;
-                            transform.rotation = new Quaternion(networking.sync_objects[entity_id].flo[3],
-                               networking.sync_objects[entity_id].flo[4],
-                               networking.sync_objects[entity_id].flo[5],
-                               networking.sync_objects[entity_id].flo[6]); ;
-                            prev_pos = netpos;
+                            OnObjUpdate();
                         }
                     }
                 }
             }
         }
+    }
+
+    //non master only
+    public void OnObjUpdate()
+    {
+        Vector3 netpos = new Vector3(networking.sync_objects[entity_id].flo[0],
+                          networking.sync_objects[entity_id].flo[1],
+                          networking.sync_objects[entity_id].flo[2]);
+
+        transform.position = netpos;
+        transform.rotation = new Quaternion(networking.sync_objects[entity_id].flo[3],
+           networking.sync_objects[entity_id].flo[4],
+           networking.sync_objects[entity_id].flo[5],
+           networking.sync_objects[entity_id].flo[6]);
+        GetComponent<Rigidbody>().velocity = (transform.position - prev_pos) / networking.sync_delay;
+
+        prev_pos = netpos;
     }
 
     //master only
@@ -134,6 +141,13 @@ public class ObjSync : MonoBehaviour
     {
         if (children_uploader_id > 0) {
             var downloader = networking.sync_objects[children_uploader_id];
+
+            //destroy all children so that we can overwrite them
+            foreach (Transform child in transform)
+            {
+                Destroy(child.gameObject);
+            }
+
             if (downloader.str != null) {
                 int offset = 0;
                 foreach (var name in downloader.str)
@@ -161,7 +175,7 @@ public class ObjSync : MonoBehaviour
         if (uid > 0 && networking.sync_objects.ContainsKey(uid))
         {
             //don't call me again
-            networking.on_change.Remove(entity_id);
+            networking.on_change[entity_id].Remove(this.Wait4Upid);
 
             children_uploader_id = uid;
             Build();
@@ -173,6 +187,8 @@ public class ObjSync : MonoBehaviour
         if (allow_children_upload && children_uploader_id > 0 && networking.sync_objects[entity_id].str.Contains("_ObjSync_C"))
         {
             var uploader = networking.sync_objects[children_uploader_id];
+            uploader.flo.Clear();
+            uploader.str.Clear();
             foreach(Transform child in transform)
             {
                 Debug.Log(child.name);
